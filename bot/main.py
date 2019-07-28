@@ -13,8 +13,6 @@ s3 = boto3.client('s3')
 
 
 def handler(event, context):
-    #process.env['PATH'] = process.env['PATH'] + ': ' + process.env['LAMBDA_TASK_ROOT']
-
     record = event['Records'][0]
     assert record['eventSource'] == 'aws:s3'
     o = s3.get_object(Bucket=SES_INCOMING_BUCKET,

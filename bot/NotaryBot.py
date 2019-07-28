@@ -2,6 +2,7 @@ import Managers
 from abc import ABC, abstractmethod
 import datetime
 import os
+import time
 
 class NotaryBot(ABC):
     """
@@ -61,6 +62,9 @@ class AcceptDecision(Decision):
     def execute(self):
         self.web_manager.click_accept_button()
         Managers.logger.info('Signing accepted.')
+        with nb.web_manager.wait_for_page_load(timeout=10):
+            Managers.logger.info('Stayed on same page: {}'.format('Are you available for this signing' in self.web_manager.driver.page_source))
+            Managers.logger.info('Already taken: {}'.format('signing order has been filled' in self.web_manager.driver.page_source))
 
 class DeclineDecision(Decision):
     text = 'decline'

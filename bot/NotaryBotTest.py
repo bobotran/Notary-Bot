@@ -1,4 +1,5 @@
 import unittest
+import unittest.mock
 import NotaryBot
 import Managers
 import main
@@ -6,10 +7,15 @@ import datetime
 import pdb
 import time
 from NotaryBot import SimpleNotaryBot, AcceptDecision, DeclineDecision
+from contextlib import contextmanager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.expected_conditions import staleness_of
+
 
 sample_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/testpage1.html'
 accept_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/accept_page.html'
 faxback_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/faxback.html'
+already_filled = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/already_filled.html'
 
 class NotaryBotTest(unittest.TestCase):
 
@@ -83,24 +89,25 @@ class NotaryBotTest(unittest.TestCase):
     #     mm = Managers.MapManager('googlemaps')
     #     self.assertEqual(round(6.9), round(mm.get_miles(address2, address1)))
 
-    def testAcceptPageTitle(self):
-        wm = Managers.WebManager(accept_page)
-        self.assertEqual('Accept Page', wm.driver.title)
+    def testPageLoad(self):
+        with unittest.mock.patch.dict('os.environ', {'maxDist': '30', 'minFee': '75', 'home': '37 Sunny Slope, Rancho Santa Margarita', 'timezone': '-7', 'signingDuration': '1', 'mapKey': 'AIzaSyBSdwHPQ05vsAz4a0r49yzLLso7AeBG_-Y', 'environment': 'dev'}):
+            wm = Managers.WebManager(already_filled)
+            self.assertEqual('this signing order has been filled' in wm.driver.page_source, True)
 
     def testButtonClick(self):
         wm = Managers.WebManager(faxback_page)
         wm.click_accept_button()
-        time.sleep(1) #what the hell
-        self.assertEqual('Accept Page', wm.driver.title)
+        with wm.wait_for_page_load():
+            self.assertEqual('Accept Page', wm.driver.title)
 
     def testWebsiteIntegrated(self):
-        nb = SimpleNotaryBot(sample_page)
-        decision = nb.get_prediction()
+        with unittest.mock.patch.dict('os.environ', {'maxDist': '30', 'minFee': '75', 'home': '37 Sunny Slope, Rancho Santa Margarita', 'timezone': '-7', 'signingDuration': '1', 'mapKey': 'AIzaSyBSdwHPQ05vsAz4a0r49yzLLso7AeBG_-Y', 'environment':'dev'}):
+            nb = SimpleNotaryBot(sample_page)
+            decision = nb.get_prediction()
         self.assertEqual(AcceptDecision.text, decision.text)
         decision.execute()
-        time.sleep(3)  # what the hell
-        self.assertEqual('Accept Page', nb.web_manager.driver.title)
-
+        with nb.web_manager.wait_for_page_load():
+            self.assertEqual('Accept Page', nb.web_manager.driver.title)
 
 if __name__ == "__main__":
     unittest.main()

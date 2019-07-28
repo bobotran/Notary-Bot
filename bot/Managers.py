@@ -23,6 +23,10 @@ import os
 from oauth2client.service_account import ServiceAccountCredentials
 import logging
 import shutil
+from contextlib import contextmanager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.expected_conditions import staleness_of
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -49,7 +53,7 @@ def _init_bin(executable_name):
     currfile = os.path.join(CURR_BIN_DIR, executable_name)
     newfile = os.path.join(BIN_DIR, executable_name)
     if not os.path.exists(newfile):
-        os.rename(currfile, newfile)
+        shutil.copy2(currfile, newfile)
     logger.info("Giving new binaries permissions for lambda")
     os.chmod(newfile, 0o775)
     logger.info(executable_name + " ready.")
@@ -66,41 +70,35 @@ class WebManager:
             self._navigate_to_webpage(url_string)
     def __del__(self):
         self.driver.close()
-    #@classmethod
 
     def _get_webdriver(self):
         return self._get_chrome_webdriver()
     def _get_chrome_webdriver(self):
         chrome_options = Options()
 
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1280x1696')
-        chrome_options.add_argument('--user-data-dir=/tmp/user-data')
-        chrome_options.add_argument('--hide-scrollbars')
-        chrome_options.add_argument('--enable-logging')
-        chrome_options.add_argument('--log-level=0')
-        chrome_options.add_argument('--v=99')
-        chrome_options.add_argument('--single-process')
-        chrome_options.add_argument('--data-path=/tmp/data-path')
-        chrome_options.add_argument('--ignore-certificate-errors')
-        chrome_options.add_argument('--homedir=/tmp')
-        chrome_options.add_argument('--disk-cache-dir=/tmp/cache-dir')
-        chrome_options.add_argument(
-            'user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36')
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--headless")
 
-        # _init_bin("headless-chromium")
-        # _init_bin("chromedriver")
-        # chrome_options.binary_location = os.path.join(BIN_DIR, "headless-chromium")
-        # driver = webdriver.Chrome(chrome_options=chrome_options, executable_path=os.path.join(BIN_DIR, 'chromedriver'))
+        if os.environ['environment'] == 'dev':
+            driver = webdriver.Chrome(options=chrome_options, executable_path=os.path.join(CURR_BIN_DIR, 'chromedriver.exe'))
+        else:
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--window-size=1280x1696')
+            chrome_options.add_argument('--user-data-dir=/tmp/user-data')
+            chrome_options.add_argument('--hide-scrollbars')
+            chrome_options.add_argument('--enable-logging')
+            chrome_options.add_argument('--log-level=0')
+            chrome_options.add_argument('--v=99')
+            chrome_options.add_argument('--single-process')
+            chrome_options.add_argument('--data-path=/tmp/data-path')
+            chrome_options.add_argument('--ignore-certificate-errors')
+            chrome_options.add_argument('--homedir=/tmp')
+            chrome_options.add_argument('--disk-cache-dir=/tmp/cache-dir')
+            chrome_options.add_argument(
+                'user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36')
 
-        chrome_options.binary_location = os.path.join(CURR_BIN_DIR, "headless-chromium")
-        driver = webdriver.Chrome(chrome_options=chrome_options, executable_path=os.path.join(CURR_BIN_DIR, 'chromedriver'))
-
-        # chrome_options.add_argument("--disable-gpu")
-        # chrome_options.add_argument("--headless")
-        # driver = webdriver.Chrome(options=chrome_options, executable_path='C:\\Users\\Ryan Tran\\Desktop\\Work\\notarybot\\Notarybot\\bot\\bin\\chromedriver.exe')
+            chrome_options.binary_location = os.path.join(CURR_BIN_DIR, "headless-chromium")
+            driver = webdriver.Chrome(chrome_options=chrome_options, executable_path=os.path.join(CURR_BIN_DIR, 'chromedriver'))
 
         logger.info('WebDriver {} created successfully'.format(driver))
         return driver
@@ -147,6 +145,12 @@ class WebManager:
         self.driver.get(url_string)
     def set_url(self, url_string):
         self._navigate_to_webpage(url_string)
+
+    @contextmanager
+    def wait_for_page_load(self, timeout=10):
+            old_page = self.driver.find_element_by_tag_name('html')
+            yield WebDriverWait(self.driver, timeout).until(staleness_of(old_page))
+
     def get_details_dict(self):
         details_class_name = 'dl-horizontal'
         content = self.driver.find_element_by_class_name(details_class_name)
@@ -179,33 +183,19 @@ class WebManager:
 class CalendarManager:
     def __init__(self, timezone_offset):
         self.timezone = datetime.timezone(datetime.timedelta(hours=timezone_offset))
-    # def _get_creds(self):
-    #     SCOPES = ['https://www.googleapis.com/auth/calendar.events.readonly']
-    #     creds = None
-    #     # The file token.pickle stores the user's access and refresh tokens, and is
-    #     # created automatically when the authorization flow completes for the first
-    #     # time.
-    #     if os.path.exists('token.pickle'):
-    #         with open('token.pickle', 'rb') as token:
-    #             creds = pickle.load(token)
-
-    #     # If there are no (valid) credentials available, let the user log in.
-    #     if not creds or not creds.valid:
-    #         if creds and creds.expired and creds.refresh_token:
-    #             creds.refresh(Request())
-    #         else:
-    #             flow = InstalledAppFlow.from_client_secrets_file(
-    #                 'credentials.json', SCOPES)
-    #             creds = flow.run_local_server(port=0)
-    #         # Save the credentials for the next run
-    #         with open('token.pickle', 'wb') as token:
-    #             pickle.dump(creds, token)
-    #     return creds
 
     def _get_creds(self):
         SCOPES = ['https://www.googleapis.com/auth/calendar.events.readonly']
-        creds = self._load_token_s3(constants.TOKEN_KEY)
-        logger.info('Fetched credentials {} from s3'.format(creds))
+
+        creds = None
+        if os.environ['environment'] == 'dev':
+            if os.path.exists('token.pickle'):
+                with open('token.pickle', 'rb') as token:
+                    creds = pickle.load(token)
+        else:
+            creds = self._load_token_s3(constants.TOKEN_KEY)
+            logger.info('Fetched credentials {} from s3'.format(creds))
+
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
@@ -216,9 +206,14 @@ class CalendarManager:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     'credentials.json', SCOPES)
                 creds = flow.run_local_server(port=0)
+
             # Save the credentials for the next run
-            self._save_token_s3(constants.TOKEN_KEY, pickle.dumps(creds))
-            logger.info('Token {} saved to s3'.format(creds))
+            if os.environ['environment'] == 'dev':
+                with open('token.pickle', 'wb') as token:
+                    pickle.dump(creds, token)
+            else:
+                self._save_token_s3(constants.TOKEN_KEY, pickle.dumps(creds))
+                logger.info('Token {} saved to s3'.format(creds))
         return creds
 
     def _save_token_s3(self, key, token_bytes):
@@ -275,7 +270,6 @@ class CalendarManager:
 class MapManager:
     def __init__(self, client_str):
         if client_str == 'googlemaps':
-            #rename calendarKey lol
             api_key = os.environ['mapKey']
             self.client = self._get_googlemaps_client(api_key)
             logger.info('googlemaps client {} created'.format(self.client))
