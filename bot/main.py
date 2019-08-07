@@ -4,13 +4,14 @@ import os
 import boto3
 from NotaryBot import SimpleNotaryBot
 from Managers import logger
+import Managers
 import re
 import selenium
 
 SES_INCOMING_BUCKET = 'ses-notarybot'
 
 s3 = boto3.client('s3')
-
+driver = Managers.WebManager._get_webdriver()
 
 def handler(event, context):
     record = event['Records'][0]
@@ -25,13 +26,18 @@ def handler(event, context):
     if not is_assignment_notification(msg_string):
         try:
             url_string = get_snpd_url(msg_string)
-            nb = SimpleNotaryBot(url_string)
+            nb = SimpleNotaryBot(url_string, driver)
             prediction = nb.get_prediction()
             logger.info('Decision for signing at {}: {}'.format(url_string, prediction.text))
             prediction.execute()
             return prediction.text
         except (AssertionError, selenium.common.exceptions.NoSuchElementException) as e:
+            logger.error('Expected Exception caught.')
             logger.error(e)
+        except Exception as e:
+            logger.error('Unexpected exception encountered: ')
+            #logger.error(e)
+            raise e
     else:
         logger.info('Message recognized as already assigned. Skipped.')
 
