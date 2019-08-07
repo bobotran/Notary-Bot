@@ -41,8 +41,6 @@ def handler(event, context):
     else:
         logger.info('Message recognized as already assigned. Skipped.')
 
-
-
 def get_snpd_url(msg_str):
     '''
     Returns None if match cannot be found in msg_str.
