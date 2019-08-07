@@ -15,9 +15,9 @@ driver = Managers.WebManager._get_webdriver()
 
 def handler(event, context):
     record = event['Records'][0]
-    assert record['eventSource'] == 'aws:s3'
+    assert record['eventSource'] == 'aws:ses'
     o = s3.get_object(Bucket=SES_INCOMING_BUCKET,
-                      Key=record['s3']['object']['key'])
+                      Key=record['ses']['mail']['messageId'])
     raw_mail = o['Body'].read()
     msg = email.message_from_bytes(raw_mail)
     msg_string = msg.get_payload()[0].as_string()
