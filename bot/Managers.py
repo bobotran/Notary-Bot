@@ -293,8 +293,8 @@ class CalendarManager:
             else:
                 return True
             
-    def _get_union_events_for_day(self, target):
-        if not self.union_events or self.union_events[0]['end']['dateTime'].date() != target.date():
+    def _get_union_events_for_day(self, target, skip_cache=False):
+        if self.union_events is None or skip_cache:
             logger.info('Creating union events...')
             events = copy.deepcopy(self.get_events_for_day(target))
             index = 0
@@ -356,6 +356,8 @@ class CalendarManager:
             end_datetime = datetime.datetime.combine(end_datetime.date(), self.operating_end)
 
         events = self.get_events_between(start_datetime, end_datetime, events=self._get_union_events_for_day(start_datetime))
+        if len(events) == 0:
+            return _get_free_slots_between(start_datetime, end_datetime)
         total_free_slots = 0
         total_free_slots += _get_free_slots_between(start_datetime, events[0]['start']['dateTime'])
         for index in range(len(events) - 1):
@@ -370,7 +372,7 @@ class CalendarManager:
         Returns list of events between start_datetime and end_datetime.
         Assumes start_datetime and end_datetime are on the same day.
         """
-        if not events:
+        if events is None:
             events = self.get_events_for_day(start_datetime)
 
         events_after_start = []
@@ -385,12 +387,12 @@ class CalendarManager:
             result.append(ev)
         return result
 
-    def get_events_for_day(self, target):
+    def get_events_for_day(self, target, skip_cache=False):
         """
         Args:
             target: datetime.datetime that represents the date for the requested events.
         """
-        if not self.events or self.events[0]['end']['dateTime'].date() != target.date():
+        if self.events is None or skip_cache:
             assert isinstance(target, datetime.datetime), 'Target event is not a datetime.'
             creds = self._get_creds()
             logger.info('Credentials {} loaded.'.format(creds))

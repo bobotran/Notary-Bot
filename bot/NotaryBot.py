@@ -32,16 +32,19 @@ class SimpleNotaryBot(NotaryBot):
             Managers.logger.info('Fee too low. Declining.')
             return DeclineDecision(self.web_manager)
 
+        Managers.logger.info('Checking number of signings...')
         if len(self.calendar_manager.get_signings_for_day(details['When'].replace(tzinfo=self.calendar_manager.timezone))) > param['Max Signings']:
             Managers.logger.info('Too many signings for the day. Declining.')
             return DeclineDecision(self.web_manager)
-
+        
         if not details['Qualifier']:
+            Managers.logger.info('Checking if predetermined timeslot is free...')
             start_datetime = details['When'].replace(tzinfo=self.calendar_manager.timezone)
             if not self.calendar_manager.is_free(start_datetime, param['Signing Duration']):
                 Managers.logger.info('Time conflict. Declining.')
                 return DeclineDecision(self.web_manager)
-
+        
+        Managers.logger.info('Checking distance...')
         if self.map_manager.get_miles(param['Home'], details['Where']) > param['Max Dist']:
             Managers.logger.info('Signing is too far. Declining.')
             return DeclineDecision(self.web_manager)

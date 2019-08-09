@@ -9,6 +9,7 @@ import re
 import selenium
 
 SES_INCOMING_BUCKET = 'ses-notarybot'
+BUCKET_PREFIX = 'emails/'
 
 s3 = boto3.client('s3')
 driver = Managers.WebManager._get_webdriver()
@@ -16,12 +17,14 @@ driver = Managers.WebManager._get_webdriver()
 def handler(event, context):
     record = event['Records'][0]
     assert record['eventSource'] == 'aws:ses'
+    key = BUCKET_PREFIX + record['ses']['mail']['messageId']
+    logger.info('SES event received. Attempting to fetch S3 item: {}'.format(key))
     o = s3.get_object(Bucket=SES_INCOMING_BUCKET,
-                      Key=record['ses']['mail']['messageId'])
+                      Key=key)
     raw_mail = o['Body'].read()
     msg = email.message_from_bytes(raw_mail)
     msg_string = msg.get_payload()[0].as_string()
-    logger.info('Message string received from s3 {}: {}'.format(record['s3']['object']['key'], msg_string))
+    logger.info('Message string received from s3 {}: {}'.format(BUCKET_PREFIX + record['ses']['mail']['messageId'], msg_string))
 
     if not is_assignment_notification(msg_string):
         try:

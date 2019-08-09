@@ -11,12 +11,15 @@ from contextlib import contextmanager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.expected_conditions import staleness_of
 import os
+import logging
+import sys
 
 
 sample_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/testpage1.html'
 accept_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/accept_page.html'
 faxback_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/faxback.html'
 already_filled = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/already_filled.html'
+tbd_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/tbd.html'
 environment_vars = {
 'maxDist': '30', 
 'minFee': '75', 
@@ -31,6 +34,10 @@ environment_vars = {
 'operatingEnd' : '20',
 'freenessThres' : '2'
 }
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+Managers.logger.addHandler(handler)
 
 class NotaryBotTest(unittest.TestCase):
 
@@ -125,7 +132,7 @@ class NotaryBotTest(unittest.TestCase):
 
     def testWebsiteIntegrated(self):
         with unittest.mock.patch.dict('os.environ', environment_vars):
-            nb = SimpleNotaryBot(sample_page)
+            nb = SimpleNotaryBot(tbd_page)
             decision = nb.get_prediction()
             self.assertEqual(DeclineDecision.text, decision.text)
             decision.execute()
