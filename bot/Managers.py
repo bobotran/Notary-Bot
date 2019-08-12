@@ -14,6 +14,7 @@ import pdb
 import time
 import copy
 import math
+import multiprocessing as mp
 
 import datetime
 import pickle
@@ -432,7 +433,6 @@ class MapManager:
         if client_str == 'googlemaps':
             api_key = os.environ['mapKey']
             self.client = self._get_googlemaps_client(api_key)
-            #logger.info('googlemaps client {} created'.format(self.client))
 
     def _get_googlemaps_client(self, API_key):
         return googlemaps.Client(key=API_key)
@@ -447,22 +447,47 @@ class MapManager:
         return self.client.distance_matrix(origin, dest, mode='driving', units='imperial', avoid='tolls')["rows"][0]["elements"][0]["duration"]["value"]
 
 class ConfigManager:
+    SSM_PREFIX = '/notarybot/prod/'
     def get_parameters():
-        tz = datetime.timezone(datetime.timedelta(hours=int(os.environ['timezone'])))
-        return {'Max Dist': int(os.environ['maxDist']), 
-        'Min Fee': int(os.environ['minFee']), 
-        'Home': os.environ['home'], 
-        'Timezone': tz, 
-        'Signing Duration': int(os.environ['signingDuration']), 
-        'ASAP Duration': int(os.environ['asapDuration']), 
-        'Max Signings': int(os.environ['maxSignings']),
-        'Operating Start': datetime.time(hour=int(os.environ['operatingStart']), tzinfo=tz),
-        'Operating End' : datetime.time(hour=int(os.environ['operatingEnd']), tzinfo=tz),
-        'Freeness Threshold' : int(os.environ['freenessThres']),
-        'Provider Preferences' : eval(os.environ['providerPreferences']) }
+        if os.environ['configLocation'] == 'ssm':
+            logger.info('Fetching parameters from SSM...')
+            result = {}
+            def _store_ssm_result(parameter_result):
+                result[parameter_result['Name']] = parameter_result['Value']
+
+            parameters = ['timezone', 'maxDist', 'minFee', 'signingDuration', 'asapDuration', 'maxSignings', 'operatingStart', 'operatingEnd', 'freenessThres', 'providerPreferences']
+            pool = mp.Pool(mp.cpu_count())
+            pool.map_async(ConfigManager.get_ssm_parameter, parameters, callback=_store_ssm_result)
+            
+            tz = datetime.timezone(datetime.timedelta(hours=int(result['timezone'])))
+            return {'Max Dist': int(result['maxDist']), 
+            'Min Fee': int(result['minFee']), 
+            'Home': os.environ['home'], 
+            'Timezone': tz, 
+            'Signing Duration': int(result['signingDuration']), 
+            'ASAP Duration': int(result['asapDuration']), 
+            'Max Signings': int(result['maxSignings']),
+            'Operating Start': datetime.time(hour=int(result['operatingStart']), tzinfo=tz),
+            'Operating End' : datetime.time(hour=int(result['operatingEnd']), tzinfo=tz),
+            'Freeness Threshold' : int(result['freenessThres']),
+            'Provider Preferences' : eval(result['providerPreferences']) }
+        else:
+            logger.info('Fetching parameters from environment variables...')
+            tz = datetime.timezone(datetime.timedelta(hours=int(os.environ['timezone'])))
+            return {'Max Dist': int(os.environ['maxDist']), 
+            'Min Fee': int(os.environ['minFee']), 
+            'Home': os.environ['home'], 
+            'Timezone': tz, 
+            'Signing Duration': int(os.environ['signingDuration']), 
+            'ASAP Duration': int(os.environ['asapDuration']), 
+            'Max Signings': int(os.environ['maxSignings']),
+            'Operating Start': datetime.time(hour=int(os.environ['operatingStart']), tzinfo=tz),
+            'Operating End' : datetime.time(hour=int(os.environ['operatingEnd']), tzinfo=tz),
+            'Freeness Threshold' : int(os.environ['freenessThres']),
+            'Provider Preferences' : eval(os.environ['providerPreferences']) }
 
     def get_ssm_parameter(param):
-        full_path = '/notarybot/prod/' + param
+        full_path = ConfigManager.SSM_PREFIX + param
         response = ssm.get_parameter(Name=full_path, WithDecryption=True)
-        return response['Parameter']['Value']
+        return {'Name' : param, 'Value' : response['Parameter']['Value']} 
 

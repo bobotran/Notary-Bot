@@ -33,7 +33,8 @@ environment_vars = {
 'operatingStart' : '8',
 'operatingEnd' : '20',
 'freenessThres' : '2',
-'providerPreferences': "{}"
+'providerPreferences': "{}",
+'configLocation' : 'ssm'
 }
 
 handler = logging.StreamHandler(sys.stdout)
@@ -64,7 +65,7 @@ class NotaryBotTest(unittest.TestCase):
     def testGetDetailsDict(self):
         with unittest.mock.patch.dict('os.environ', environment_vars):
             wm = Managers.WebManager(sample_page)
-            expected = {'When' : datetime.datetime(2019, 6, 21, 19, 30), 'Where' : 'Dove Canyon, CA 92679', 'Fee' : 100, 'Qualifier' : None}
+            expected = {'When' : datetime.datetime(2019, 6, 21, 19, 30), 'Where' : 'Dove Canyon, CA 92679', 'Fee' : 100, 'Qualifier' : None, 'Provider' : 'First Class Signing Service'}
             self.assertEqual(wm.get_details_dict(), expected)
 
     def testGetProvider(self):
@@ -189,7 +190,7 @@ class NotaryBotTest(unittest.TestCase):
     def testssm(self):
         with unittest.mock.patch.dict('os.environ', environment_vars):
             result = Managers.ConfigManager.get_ssm_parameter('asapDuration')
-            self.assertEqual(result, '2')
+            self.assertEqual(result['Value'], '2')
 
 if __name__ == "__main__":
     unittest.main()
