@@ -32,7 +32,8 @@ environment_vars = {
 'asapDuration':'2',
 'operatingStart' : '8',
 'operatingEnd' : '20',
-'freenessThres' : '2'
+'freenessThres' : '2',
+'providerPreferences': "{}"
 }
 
 handler = logging.StreamHandler(sys.stdout)
@@ -65,6 +66,11 @@ class NotaryBotTest(unittest.TestCase):
             wm = Managers.WebManager(sample_page)
             expected = {'When' : datetime.datetime(2019, 6, 21, 19, 30), 'Where' : 'Dove Canyon, CA 92679', 'Fee' : 100, 'Qualifier' : None}
             self.assertEqual(wm.get_details_dict(), expected)
+
+    def testGetProvider(self):
+        with unittest.mock.patch.dict('os.environ', environment_vars):
+            wm = Managers.WebManager(sample_page)
+            self.assertEqual(wm._get_provider(), 'First Class Signing Service')
 
     def testMonthExtraction(self):
         with unittest.mock.patch.dict('os.environ', environment_vars):
@@ -179,6 +185,11 @@ class NotaryBotTest(unittest.TestCase):
             cm = Managers.CalendarManager(param['Timezone'])
             free_slots = cm.has_free(dt(2019, 8, 6, 8, tzinfo=cm.timezone), dt(2019, 8, 6, 23, tzinfo=cm.timezone), param['Signing Duration'])
             self.assertEqual(free_slots, 7)
+
+    def testssm(self):
+        with unittest.mock.patch.dict('os.environ', environment_vars):
+            result = Managers.ConfigManager.get_ssm_parameter('asapDuration')
+            self.assertEqual(result, '2')
 
 if __name__ == "__main__":
     unittest.main()
