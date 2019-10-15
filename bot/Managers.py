@@ -36,14 +36,8 @@ ssm = boto3.client('ssm')
 
 """
 Todo:
-    Fix get_details_dict to put None in fields it can't read ('When')
-    Have NotaryBot halt when details dict contains any None
-
-    Figure out logger
-    Move CalendarManager credentials.json and MapManager API key to environment variables
-    (InstalledAppFlow.from_environment_variables?)
-    Change WebManager constructor to _navigate_to_webpage automatically
-    Run full integration test with sam local invoke
+    TBD on same day.
+    "Outside operating range" for TBD call 8/12
 """
 BIN_DIR = "/tmp/bin"
 CURR_BIN_DIR = os.getcwd() + "/bin"
@@ -361,11 +355,12 @@ class CalendarManager:
                 return 0
             else:
                 return math.trunc(free_slots)
-        if start_datetime.time().replace(tzinfo=self.timezone) < self.operating_start:
-            start_datetime = datetime.datetime.combine(start_datetime.date(), self.operating_start)
-        if end_datetime.time().replace(tzinfo=self.timezone) > self.operating_end:
-            end_datetime = datetime.datetime.combine(end_datetime.date(), self.operating_end)
 
+        if start_datetime.timetz() < self.operating_start:
+            start_datetime = datetime.datetime.combine(start_datetime.date(), self.operating_start)
+        if end_datetime.timetz() > self.operating_end:
+            end_datetime = datetime.datetime.combine(end_datetime.date(), self.operating_end)
+        
         events = self.get_events_between(start_datetime, end_datetime, events=self._get_union_events_for_day(start_datetime))
         if len(events) == 0:
             return _get_free_slots_between(start_datetime, end_datetime)

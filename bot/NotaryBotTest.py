@@ -20,6 +20,7 @@ accept_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/accept_
 faxback_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/faxback.html'
 already_filled = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/already_filled.html'
 tbd_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/tbd.html'
+morning_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/morning.html'
 environment_vars = {
 'maxDist': '30', 
 'minFee': '75', 
@@ -139,7 +140,7 @@ class NotaryBotTest(unittest.TestCase):
 
     def testWebsiteIntegrated(self):
         with unittest.mock.patch.dict('os.environ', environment_vars):
-            nb = SimpleNotaryBot(tbd_page)
+            nb = SimpleNotaryBot(morning_page)
             decision = nb.get_prediction()
             self.assertEqual(DeclineDecision.text, decision.text)
             decision.execute()
@@ -190,7 +191,7 @@ class NotaryBotTest(unittest.TestCase):
     def testssm(self):
         with unittest.mock.patch.dict('os.environ', environment_vars):
             result = Managers.ConfigManager.get_ssm_parameter('asapDuration')
-            self.assertEqual(result['Value'], '2')
+            self.assertEqual(result, '2')
 
 if __name__ == "__main__":
     unittest.main()
