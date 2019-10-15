@@ -48,6 +48,7 @@ class SimpleNotaryBot(NotaryBot):
             if not self.calendar_manager.is_free(start_datetime, param['Signing Duration']):
                 Managers.logger.info('Time conflict. Declining.')
                 return DeclineDecision(self.web_manager)
+            
         elif details['Qualifier'] == Managers.CalendarManager.BEFORE:
             day_beginning = datetime.datetime.combine(
                 details['When'].date(), self.calendar_manager.operating_start)
@@ -79,7 +80,7 @@ class SimpleNotaryBot(NotaryBot):
             start_datetime = datetime.datetime.combine(
                 details['When'].date(), self.calendar_manager.operating_start)
             end_datetime = datetime.datetime.combine(
-                details['When'].date(), datetime.time(hour=12))
+                details['When'].date(), datetime.time(hour=12, tzinfo=self.calendar_manager.timezone))
             free_slots = self.calendar_manager.has_free(
                 start_datetime, end_datetime, param['Signing Duration'])
             Managers.logger.info('Detected {} free slots for the {}'.format(
@@ -88,9 +89,9 @@ class SimpleNotaryBot(NotaryBot):
                 return DeclineDecision(self.web_manager)
         elif details['Qualifier'] == Managers.CalendarManager.AFTERNOON:
             start_datetime = datetime.datetime.combine(
-                details['When'].date(), datetime.time(hour=12))
+                details['When'].date(), datetime.time(hour=12, tzinfo=self.calendar_manager.timezone))
             end_datetime = datetime.datetime.combine(
-                details['When'].date(), datetime.time(hour=17))
+                details['When'].date(), datetime.time(hour=17, tzinfo=self.calendar_manager.timezone))
             free_slots = self.calendar_manager.has_free(
                 start_datetime, end_datetime, param['Signing Duration'])
             Managers.logger.info('Detected {} free slots for the {}'.format(
@@ -99,7 +100,7 @@ class SimpleNotaryBot(NotaryBot):
                 return DeclineDecision(self.web_manager)
         elif details['Qualifier'] == Managers.CalendarManager.EVENING:
             start_datetime = datetime.datetime.combine(
-                details['When'].date(), datetime.time(hour=17))
+                details['When'].date(), datetime.time(hour=17, tzinfo=self.calendar_manager.timezone))
             end_datetime = datetime.datetime.combine(
                 details['When'].date(), self.calendar_manager.operating_end)
             free_slots = self.calendar_manager.has_free(
