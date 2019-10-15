@@ -31,6 +31,7 @@ from selenium.webdriver.support.expected_conditions import staleness_of
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+ssm = boto3.client('ssm')
 
 
 """
@@ -130,19 +131,25 @@ class WebManager:
                 return position
         return None
 
-    def _str_to_datetime(self, dt_str):
+    def _str_to_datetime(self, dt_str, timezone=None):
         """
         Parses strings in the format 'Fri Jun 21 at 7:30 pm'
         """
         dt_list = dt_str.split()
         month_index = 1
-        matching_months = WebManager.months_trie.start_with_prefix(dt_list[month_index])
+        try:
+            matching_months = WebManager.months_trie.start_with_prefix(dt_list[month_index])
+        except IndexError:
+            logger.info('When field was of length 1. Unable to convert to datetime. Returning None.')
+            return None
         assert len(matching_months) == 1, 'There is not exactly one match for ' + dt_list[month_index]
-
-        year = datetime.datetime.now().year
+        
         month = matching_months[0].val
         day = int(dt_list[month_index + 1])
-
+        year = datetime.datetime.now(timezone).year
+        if datetime.datetime.now(timezone).month == 12 and month == 1:
+            year += 1
+            
         time_index = self._get_index_of(':', dt_list, 4)
         if time_index:
             time_substr = dt_list[time_index]
@@ -154,11 +161,11 @@ class WebManager:
                 hr = hr % 12 + 12
             else:
                 assert dt_list[time_index + 1].lower() == 'am', 'Sixth element of detail list is neither AM nor PM'
-            when = datetime.datetime(year, month, day, hour=hr, minute=mn)
+            when = datetime.datetime(year, month, day, hour=hr, minute=mn, tzinfo=timezone)
             logger.info('Processed {} into datetime {}'.format(dt_str, when))
             return when
         else:
-            when = datetime.datetime(year, month, day)
+            when = datetime.datetime(year, month, day, tzinfo=timezone)
             logger.info('Processed {} into datetime {}'.format(dt_str, when))
             return when
     def _is_prescheduled(self, dt_str):
@@ -172,6 +179,12 @@ class WebManager:
             elem = dt_list[position].replace('.','').lower()
             if elem in [CalendarManager.ASAP, CalendarManager.TBD, CalendarManager.MORNING, CalendarManager.AFTERNOON, CalendarManager.EVENING, CalendarManager.BEFORE, CalendarManager.AFTER]:
                 return elem
+        return None
+    def _get_provider(self):
+        provider_class_name = 'automator-details__message-label'
+        contents = self.driver.find_elements_by_class_name(provider_class_name)
+        content = [elem.text for elem in contents if elem.text.startswith('About ')]
+        return content[0].replace('About ', '')
     def _navigate_to_webpage(self, url_string):
         '''
         Navigates to the webpage specified by url_string.
@@ -187,14 +200,12 @@ class WebManager:
     def wait_for_page_load(self, timeout=10):
         yield WebDriverWait(self.driver, timeout).until(staleness_of(self.old_page))
 
-    def get_details_dict(self):
+    def get_details_dict(self, timezone=None):
         details_class_name = 'dl-horizontal'
         content = self.driver.find_element_by_class_name(details_class_name)
         details = [elem.text for elem in content.find_elements_by_css_selector('*')]
-        qualifier = None
-        if not self._is_prescheduled(details[details.index('When') + 1]):
-            qualifier = self._get_qualifier(details[details.index('When') + 1])
-        when = self._str_to_datetime(details[details.index('When') + 1])
+        qualifier = self._get_qualifier(details[details.index('When') + 1])
+        when = self._str_to_datetime(details[details.index('When') + 1], timezone=timezone)
         where = details[details.index('Where') + 1].replace(' map', '')
         fee_line = details[details.index('Your fee') + 1]
         dollar_amount = None
@@ -202,7 +213,7 @@ class WebManager:
             if '$' in word:
                 dollar_amount = word.replace('$', '')
         fee = int(dollar_amount)
-        return {'When' : when, 'Where' : where, 'Fee' : fee, 'Qualifier' : qualifier}
+        return {'When' : when, 'Where' : where, 'Fee' : fee, 'Qualifier' : qualifier, 'Provider' : self._get_provider()}
 
     def click_accept_button(self):
         try:
@@ -293,8 +304,8 @@ class CalendarManager:
             else:
                 return True
             
-    def _get_union_events_for_day(self, target):
-        if not self.union_events or self.union_events[0]['end']['dateTime'].date() != target.date():
+    def _get_union_events_for_day(self, target, skip_cache=False):
+        if self.union_events is None or skip_cache:
             logger.info('Creating union events...')
             events = copy.deepcopy(self.get_events_for_day(target))
             index = 0
@@ -356,6 +367,8 @@ class CalendarManager:
             end_datetime = datetime.datetime.combine(end_datetime.date(), self.operating_end)
 
         events = self.get_events_between(start_datetime, end_datetime, events=self._get_union_events_for_day(start_datetime))
+        if len(events) == 0:
+            return _get_free_slots_between(start_datetime, end_datetime)
         total_free_slots = 0
         total_free_slots += _get_free_slots_between(start_datetime, events[0]['start']['dateTime'])
         for index in range(len(events) - 1):
@@ -370,7 +383,7 @@ class CalendarManager:
         Returns list of events between start_datetime and end_datetime.
         Assumes start_datetime and end_datetime are on the same day.
         """
-        if not events:
+        if events is None:
             events = self.get_events_for_day(start_datetime)
 
         events_after_start = []
@@ -385,12 +398,12 @@ class CalendarManager:
             result.append(ev)
         return result
 
-    def get_events_for_day(self, target):
+    def get_events_for_day(self, target, skip_cache=False):
         """
         Args:
             target: datetime.datetime that represents the date for the requested events.
         """
-        if not self.events or self.events[0]['end']['dateTime'].date() != target.date():
+        if self.events is None or skip_cache:
             assert isinstance(target, datetime.datetime), 'Target event is not a datetime.'
             creds = self._get_creds()
             logger.info('Credentials {} loaded.'.format(creds))
@@ -419,30 +432,53 @@ class MapManager:
         if client_str == 'googlemaps':
             api_key = os.environ['mapKey']
             self.client = self._get_googlemaps_client(api_key)
-            #logger.info('googlemaps client {} created'.format(self.client))
 
     def _get_googlemaps_client(self, API_key):
         return googlemaps.Client(key=API_key)
 
     def get_miles(self, origin, dest):
-        meters = self.client.distance_matrix(origin, dest, mode='driving', units='metric')["rows"][0]["elements"][0]["distance"]["value"]
+        meters = self.client.distance_matrix(origin, dest, mode='driving', units='metric', avoid='tolls')["rows"][0]["elements"][0]["distance"]["value"]
         logger.info('Miles from {} to {} = {}'.format(
             origin, dest, round(meters * 0.000621371, ndigits=1)))
         logger.info('Distance Matrix queried.')
         return round(meters * 0.000621371, ndigits=1)
     def get_seconds(self, origin, dest):
-        return self.client.distance_matrix(origin, dest, mode='driving', units='imperial')["rows"][0]["elements"][0]["duration"]["value"]
+        return self.client.distance_matrix(origin, dest, mode='driving', units='imperial', avoid='tolls')["rows"][0]["elements"][0]["duration"]["value"]
 
 class ConfigManager:
+    SSM_PREFIX = '/notarybot/prod/'
     def get_parameters():
-        tz = datetime.timezone(datetime.timedelta(hours=int(os.environ['timezone'])))
-        return {'Max Dist': int(os.environ['maxDist']), 
-        'Min Fee': int(os.environ['minFee']), 
-        'Home': os.environ['home'], 
-        'Timezone': tz, 
-        'Signing Duration': int(os.environ['signingDuration']), 
-        'ASAP Duration': int(os.environ['asapDuration']), 
-        'Max Signings': int(os.environ['maxSignings']),
-        'Operating Start': datetime.time(hour=int(os.environ['operatingStart']), tzinfo=tz),
-        'Operating End' : datetime.time(hour=int(os.environ['operatingEnd']), tzinfo=tz),
-        'Freeness Threshold' : int(os.environ['freenessThres']) }
+        if os.environ['configLocation'] == 'ssm':
+            logger.info('Fetching parameters from SSM...')
+            tz = datetime.timezone(datetime.timedelta(hours=int(ConfigManager.get_ssm_parameter('timezone'))))
+            return {'Max Dist': int(ConfigManager.get_ssm_parameter('maxDist')), 
+            'Min Fee': int(ConfigManager.get_ssm_parameter('minFee')), 
+            'Home': os.environ['home'], 
+            'Timezone': tz, 
+            'Signing Duration': int(ConfigManager.get_ssm_parameter('signingDuration')), 
+            'ASAP Duration': int(ConfigManager.get_ssm_parameter('asapDuration')), 
+            'Max Signings': int(ConfigManager.get_ssm_parameter('maxSignings')),
+            'Operating Start': datetime.time(hour=int(ConfigManager.get_ssm_parameter('operatingStart')), tzinfo=tz),
+            'Operating End' : datetime.time(hour=int(ConfigManager.get_ssm_parameter('operatingEnd')), tzinfo=tz),
+            'Freeness Threshold' : int(ConfigManager.get_ssm_parameter('freenessThres')),
+            'Provider Preferences' : eval(ConfigManager.get_ssm_parameter('providerPreferences')) }
+        else:
+            logger.info('Fetching parameters from environment variables...')
+            tz = datetime.timezone(datetime.timedelta(hours=int(os.environ['timezone'])))
+            return {'Max Dist': int(os.environ['maxDist']), 
+            'Min Fee': int(os.environ['minFee']), 
+            'Home': os.environ['home'], 
+            'Timezone': tz, 
+            'Signing Duration': int(os.environ['signingDuration']), 
+            'ASAP Duration': int(os.environ['asapDuration']), 
+            'Max Signings': int(os.environ['maxSignings']),
+            'Operating Start': datetime.time(hour=int(os.environ['operatingStart']), tzinfo=tz),
+            'Operating End' : datetime.time(hour=int(os.environ['operatingEnd']), tzinfo=tz),
+            'Freeness Threshold' : int(os.environ['freenessThres']),
+            'Provider Preferences' : eval(os.environ['providerPreferences']) }
+
+    def get_ssm_parameter(param):
+        full_path = ConfigManager.SSM_PREFIX + param
+        response = ssm.get_parameter(Name=full_path, WithDecryption=True)
+        return response['Parameter']['Value']
+

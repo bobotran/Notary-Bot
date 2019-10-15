@@ -11,12 +11,15 @@ from contextlib import contextmanager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.expected_conditions import staleness_of
 import os
+import logging
+import sys
 
 
 sample_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/testpage1.html'
 accept_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/accept_page.html'
 faxback_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/faxback.html'
 already_filled = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/already_filled.html'
+tbd_page = 'https://6zkmrwrswzaeisdvykf0fw-on.drv.tw/NotaryBotWebTest/tbd.html'
 environment_vars = {
 'maxDist': '30', 
 'minFee': '75', 
@@ -29,8 +32,14 @@ environment_vars = {
 'asapDuration':'2',
 'operatingStart' : '8',
 'operatingEnd' : '20',
-'freenessThres' : '2'
+'freenessThres' : '2',
+'providerPreferences': "{}",
+'configLocation' : 'ssm'
 }
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+Managers.logger.addHandler(handler)
 
 class NotaryBotTest(unittest.TestCase):
 
@@ -56,8 +65,13 @@ class NotaryBotTest(unittest.TestCase):
     def testGetDetailsDict(self):
         with unittest.mock.patch.dict('os.environ', environment_vars):
             wm = Managers.WebManager(sample_page)
-            expected = {'When' : datetime.datetime(2019, 6, 21, 19, 30), 'Where' : 'Dove Canyon, CA 92679', 'Fee' : 100, 'Qualifier' : None}
+            expected = {'When' : datetime.datetime(2019, 6, 21, 19, 30), 'Where' : 'Dove Canyon, CA 92679', 'Fee' : 100, 'Qualifier' : None, 'Provider' : 'First Class Signing Service'}
             self.assertEqual(wm.get_details_dict(), expected)
+
+    def testGetProvider(self):
+        with unittest.mock.patch.dict('os.environ', environment_vars):
+            wm = Managers.WebManager(sample_page)
+            self.assertEqual(wm._get_provider(), 'First Class Signing Service')
 
     def testMonthExtraction(self):
         with unittest.mock.patch.dict('os.environ', environment_vars):
@@ -125,7 +139,7 @@ class NotaryBotTest(unittest.TestCase):
 
     def testWebsiteIntegrated(self):
         with unittest.mock.patch.dict('os.environ', environment_vars):
-            nb = SimpleNotaryBot(sample_page)
+            nb = SimpleNotaryBot(tbd_page)
             decision = nb.get_prediction()
             self.assertEqual(DeclineDecision.text, decision.text)
             decision.execute()
@@ -172,6 +186,11 @@ class NotaryBotTest(unittest.TestCase):
             cm = Managers.CalendarManager(param['Timezone'])
             free_slots = cm.has_free(dt(2019, 8, 6, 8, tzinfo=cm.timezone), dt(2019, 8, 6, 23, tzinfo=cm.timezone), param['Signing Duration'])
             self.assertEqual(free_slots, 7)
+
+    def testssm(self):
+        with unittest.mock.patch.dict('os.environ', environment_vars):
+            result = Managers.ConfigManager.get_ssm_parameter('asapDuration')
+            self.assertEqual(result['Value'], '2')
 
 if __name__ == "__main__":
     unittest.main()

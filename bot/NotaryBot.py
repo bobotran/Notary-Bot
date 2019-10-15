@@ -24,73 +24,107 @@ class SimpleNotaryBot(NotaryBot):
         super().__init__(url_string, webdriver=webdriver)
 
     def get_prediction(self):
-        details = self.web_manager.get_details_dict()
+        details = self.web_manager.get_details_dict(timezone=self.calendar_manager.timezone)
         Managers.logger.info('Details {} retrieved.'.format(details))
         param = Managers.ConfigManager.get_parameters()
         Managers.logger.info('Parameters {} retrieved.'.format(param))
         if details['Fee'] < param['Min Fee']:
             Managers.logger.info('Fee too low. Declining.')
             return DeclineDecision(self.web_manager)
-
-        if len(self.calendar_manager.get_signings_for_day(details['When'].replace(tzinfo=self.calendar_manager.timezone))) > param['Max Signings']:
-            Managers.logger.info('Too many signings for the day. Declining.')
+        
+        Managers.logger.info('Checking preferences for {}...'.format(details['Provider']))
+        if details['Provider'] in param['Provider Preferences'] and (details['When'].date() - datetime.datetime.now(self.calendar_manager.timezone).date()).days > param['Provider Preferences'][details['Provider']]:
+            Managers.logger.info('{} is a bad provider! Only accepting signings from them {} days out.'.format(details['Provider'], param['Provider Preferences'][details['Provider']]))
             return DeclineDecision(self.web_manager)
 
+        Managers.logger.info('Checking number of signings...')
+        if len(self.calendar_manager.get_signings_for_day(details['When'])) > param['Max Signings']:
+            Managers.logger.info('Too many signings for the day. Declining.')
+            return DeclineDecision(self.web_manager)
+        
         if not details['Qualifier']:
-            start_datetime = details['When'].replace(tzinfo=self.calendar_manager.timezone)
+            Managers.logger.info('Checking if predetermined timeslot is free...')
+            start_datetime = details['When']
             if not self.calendar_manager.is_free(start_datetime, param['Signing Duration']):
                 Managers.logger.info('Time conflict. Declining.')
                 return DeclineDecision(self.web_manager)
-
-        if self.map_manager.get_miles(param['Home'], details['Where']) > param['Max Dist']:
-            Managers.logger.info('Signing is too far. Declining.')
-            return DeclineDecision(self.web_manager)
-        if details['Qualifier'] == Managers.CalendarManager.BEFORE:
-            day_beginning = datetime.datetime.combine(details['When'].date(), self.calendar_manager.operating_start)
-            free_slots = self.calendar_manager.has_free(day_beginning, details['When'], param['Signing Duration'])
-            Managers.logger.info('Detected {} free slots for {}'.format(free_slots, Managers.CalendarManager.BEFORE))
+        elif details['Qualifier'] == Managers.CalendarManager.BEFORE:
+            day_beginning = datetime.datetime.combine(
+                details['When'].date(), self.calendar_manager.operating_start)
+            free_slots = self.calendar_manager.has_free(
+                day_beginning, details['When'], param['Signing Duration'])
+            Managers.logger.info('Detected {} free slots for {}'.format(
+                free_slots, Managers.CalendarManager.BEFORE))
             if free_slots < param['Freeness Threshold']:
                 return DeclineDecision(self.web_manager)
-        if details['Qualifier'] == Managers.CalendarManager.AFTER:
-            day_end = datetime.datetime.combine(details['When'].date(), self.calendar_manager.operating_end)
-            free_slots = self.calendar_manager.has_free(details['When'], day_end, param['Signing Duration'])
-            Managers.logger.info('Detected {} free slots for {}'.format(free_slots, Managers.CalendarManager.AFTER))
+        elif details['Qualifier'] == Managers.CalendarManager.AFTER:
+            day_end = datetime.datetime.combine(
+                details['When'].date(), self.calendar_manager.operating_end)
+            free_slots = self.calendar_manager.has_free(
+                details['When'], day_end, param['Signing Duration'])
+            Managers.logger.info('Detected {} free slots for {}'.format(
+                free_slots, Managers.CalendarManager.AFTER))
             if free_slots < param['Freeness Threshold']:
                 return DeclineDecision(self.web_manager)
         elif details['Qualifier'] == Managers.CalendarManager.ASAP:
             Managers.logger.info('Processing ASAP appointment.')
-            start_datetime = datetime.datetime.now(self.calendar_manager.timezone)
+            if isinstance(details['When'], datetime.datetime):
+                start_datetime = details['When']
+            else:
+                start_datetime = datetime.datetime.now(self.calendar_manager.timezone)
             if not self.calendar_manager.is_free(start_datetime, param['ASAP Duration']):
                 Managers.logger.info('Upcoming events too close for ASAP appointment. Declining.')
                 return DeclineDecision(self.web_manager)
         elif details['Qualifier'] == Managers.CalendarManager.MORNING:
-            start_datetime = datetime.datetime.combine(details['When'].date(), self.calendar_manager.operating_start)
-            end_datetime = datetime.datetime.combine(details['When'].date(), datetime.time(hour=12))
-            free_slots = self.calendar_manager.has_free(start_datetime, end_datetime, param['Signing Duration'])
-            Managers.logger.info('Detected {} free slots for the {}'.format(free_slots, Managers.CalendarManager.MORNING))
+            start_datetime = datetime.datetime.combine(
+                details['When'].date(), self.calendar_manager.operating_start)
+            end_datetime = datetime.datetime.combine(
+                details['When'].date(), datetime.time(hour=12))
+            free_slots = self.calendar_manager.has_free(
+                start_datetime, end_datetime, param['Signing Duration'])
+            Managers.logger.info('Detected {} free slots for the {}'.format(
+                free_slots, Managers.CalendarManager.MORNING))
             if free_slots < param['Freeness Threshold']:
                 return DeclineDecision(self.web_manager)
         elif details['Qualifier'] == Managers.CalendarManager.AFTERNOON:
-            start_datetime = datetime.datetime.combine(details['When'].date(), datetime.time(hour=12))
-            end_datetime = datetime.datetime.combine(details['When'].date(), datetime.time(hour=17))
-            free_slots = self.calendar_manager.has_free(start_datetime, end_datetime, param['Signing Duration'])
-            Managers.logger.info('Detected {} free slots for the {}'.format(free_slots, Managers.CalendarManager.AFTERNOON))
+            start_datetime = datetime.datetime.combine(
+                details['When'].date(), datetime.time(hour=12))
+            end_datetime = datetime.datetime.combine(
+                details['When'].date(), datetime.time(hour=17))
+            free_slots = self.calendar_manager.has_free(
+                start_datetime, end_datetime, param['Signing Duration'])
+            Managers.logger.info('Detected {} free slots for the {}'.format(
+                free_slots, Managers.CalendarManager.AFTERNOON))
             if free_slots < param['Freeness Threshold']:
                 return DeclineDecision(self.web_manager)
         elif details['Qualifier'] == Managers.CalendarManager.EVENING:
-            start_datetime = datetime.datetime.combine(details['When'].date(), datetime.time(hour=17))
-            end_datetime = datetime.datetime.combine(details['When'].date(), self.calendar_manager.operating_end)
-            free_slots = self.calendar_manager.has_free(start_datetime, end_datetime, param['Signing Duration'])
-            Managers.logger.info('Detected {} free slots for the {}'.format(free_slots, Managers.CalendarManager.EVENING))
+            start_datetime = datetime.datetime.combine(
+                details['When'].date(), datetime.time(hour=17))
+            end_datetime = datetime.datetime.combine(
+                details['When'].date(), self.calendar_manager.operating_end)
+            free_slots = self.calendar_manager.has_free(
+                start_datetime, end_datetime, param['Signing Duration'])
+            Managers.logger.info('Detected {} free slots for the {}'.format(
+                free_slots, Managers.CalendarManager.EVENING))
             if free_slots < param['Freeness Threshold']:
                 return DeclineDecision(self.web_manager)
         elif details['Qualifier'] == Managers.CalendarManager.TBD:
-            start_datetime = datetime.datetime.combine(details['When'].date(), self.calendar_manager.operating_start)
-            end_datetime = datetime.datetime.combine(details['When'].date(), self.calendar_manager.operating_end)
-            free_slots = self.calendar_manager.has_free(start_datetime, end_datetime, param['Signing Duration'])
-            Managers.logger.info('Detected {} free slots for the {}'.format(free_slots, Managers.CalendarManager.TBD))
+            start_datetime = datetime.datetime.combine(
+                details['When'].date(), self.calendar_manager.operating_start)
+            end_datetime = datetime.datetime.combine(
+                details['When'].date(), self.calendar_manager.operating_end)
+            free_slots = self.calendar_manager.has_free(
+                start_datetime, end_datetime, param['Signing Duration'])
+            Managers.logger.info('Detected {} free slots for the {}'.format(
+                free_slots, Managers.CalendarManager.TBD))
             if free_slots < param['Freeness Threshold']:
                 return DeclineDecision(self.web_manager)
+        
+        Managers.logger.info('Checking distance...')
+        if self.map_manager.get_miles(param['Home'], details['Where']) > param['Max Dist']:
+            Managers.logger.info('Signing is too far. Declining.')
+            return DeclineDecision(self.web_manager)
+        
         return AcceptDecision(self.web_manager)
         
 
